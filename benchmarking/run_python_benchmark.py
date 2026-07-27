@@ -19,7 +19,7 @@ def eval_mode(adata, mode_name, clusters_col, ds_name, use_gpu=False):
 
     elapsed = time.time() - st
 
-    truth_labels = (adata_res.obs['truth'] == 'doublet').astype(int)
+    truth_labels = (adata_res.obs['type'] == 'doublet').astype(int)
     scores = adata_res.obs['scDblFinder_score']
 
     auroc = roc_auc_score(truth_labels, scores)
@@ -46,8 +46,8 @@ def main():
 
         adata = sc.read_h5ad(ds)
         # some datasets string parsing
-        if 'truth' in adata.obs:
-            adata.obs['truth'] = adata.obs['truth'].str.lower()
+        if 'type' in adata.obs:
+            adata.obs['type'] = adata.obs['type'].str.lower()
 
         print(f"  -> Clustered Mode")
         res_clust = eval_mode(adata, "scDblFinder.Py.clusters", "clusters", ds_name,
