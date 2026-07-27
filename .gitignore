@@ -1,0 +1,2 @@
+benchmarking/datasets/*.rds
+benchmarking/datasets/*.h5ad

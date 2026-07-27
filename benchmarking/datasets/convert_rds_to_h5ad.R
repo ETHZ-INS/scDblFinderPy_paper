@@ -9,7 +9,19 @@ if (length(rds_files) == 0) {
 
 for (f in rds_files) {
     cat("Converting", f, "...\n")
-    sce <- readRDS(f)
+    obj <- readRDS(f)
+    if (is(obj, "SingleCellExperiment")) {
+        sce <- obj
+    } else {
+        # Zenodo real_datasets.zip stores each dataset as an unnamed
+        # list(counts_matrix, truth_labels) rather than an SCE.
+        counts <- obj[[1]]
+        truth <- obj[[2]]
+        sce <- SingleCellExperiment(
+            assays = list(counts = counts),
+            colData = DataFrame(type = truth)
+        )
+    }
     out <- sub("\\.rds$", ".h5ad", f)
     writeH5AD(sce, out)
     cat("  -> Written to", out, "\n")
