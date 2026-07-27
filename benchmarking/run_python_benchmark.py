@@ -6,7 +6,6 @@ import os
 import glob
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from scDblFinderPy.scDblFinder import compute_doublet_score
 
 def eval_mode(adata, mode_name, clusters_col, ds_name, use_gpu=False):
