@@ -1,0 +1,101 @@
+"""
+Pipeline for reproducing the scDblFinderPy paper's Python benchmark and
+comparison figure, split by CPU vs. GPU run, with resource usage tracked
+for each.
+
+Lives in monitoring/ alongside gpu_monitor.py, but all rule paths are
+written relative to the repo root (scDblFinderPy_paper/), which the
+`workdir:` below pins to regardless of where you invoke `snakemake` from.
+
+Run everything (from either this directory or the repo root):
+    snakemake --cores 1 -s monitoring/Snakefile   # from repo root
+    snakemake --cores 1                           # from monitoring/
+
+Run just one target (Snakemake figures out which upstream rules it needs):
+    snakemake --cores 1 benchmarking/benchmark_AUPRC_fig_GPU.png
+
+See a dry run (what would execute, without executing it):
+    snakemake -n
+"""
+
+import glob
+from pathlib import Path
+
+# workflow.basedir is always this Snakefile's own directory (monitoring/),
+# no matter where `snakemake` is invoked from - so this pins all relative
+# paths below to the repo root reliably.
+workdir: str(Path(workflow.basedir).parent)
+
+RDS_FILES = glob.glob("benchmarking/datasets/*.rds")
+H5AD_FILES = [f.replace(".rds", ".h5ad") for f in RDS_FILES]
+
+
+rule all:
+    input:
+        "benchmarking/benchmark_AUPRC_fig_CPU.png",
+        "benchmarking/benchmark_AUPRC_fig_GPU.png",
+        "monitoring/benchmarks/run_benchmark_CPU.tsv",
+        "monitoring/benchmarks/run_benchmark_GPU.tsv",
+        "monitoring/benchmarks/gpu_usage_GPU.csv",
+
+
+# Converts the raw .rds datasets to the .h5ad format run_python_benchmark.py
+# reads. One R script call produces every .h5ad, so this is one rule with
+# many outputs rather than one rule per file.
+rule convert_datasets:
+    input:
+        rds=RDS_FILES,
+        script="benchmarking/datasets/convert_rds_to_h5ad.R",
+    output:
+        H5AD_FILES,
+    shell:
+        "cd benchmarking/datasets && Rscript convert_rds_to_h5ad.R"
+
+
+rule run_benchmark_cpu:
+    input:
+        script="benchmarking/run_python_benchmark.py",
+        datasets=H5AD_FILES,
+    output:
+        csv="benchmarking/python_benchmark_metrics_CPU.csv",
+    benchmark:
+        # Snakemake auto-fills this with wall time, max RSS, mean CPU load, etc.
+        "monitoring/benchmarks/run_benchmark_CPU.tsv"
+    shell:
+        "python {input.script} && mv benchmarking/python_benchmark_metrics.csv {output.csv}"
+
+
+rule run_benchmark_gpu:
+    input:
+        script="benchmarking/run_python_benchmark.py",
+        datasets=H5AD_FILES,
+    output:
+        csv="benchmarking/python_benchmark_metrics_GPU.csv",
+        gpu_log="monitoring/benchmarks/gpu_usage_GPU.csv",
+    benchmark:
+        "monitoring/benchmarks/run_benchmark_GPU.tsv"
+    params:
+        interval=1,
+    shell:
+        """
+        python monitoring/gpu_monitor.py {output.gpu_log} {params.interval} &
+        monitor_pid=$!
+        trap 'kill $monitor_pid 2>/dev/null' EXIT
+        python {input.script} --gpu
+        mv benchmarking/python_benchmark_metrics.csv {output.csv}
+        """
+
+
+rule plot:
+    input:
+        csv="benchmarking/python_benchmark_metrics_{mode}.csv",
+        rds="benchmarking/benchmark.results.rds",
+        script="benchmarking/plot_benchmark.R",
+    output:
+        "benchmarking/benchmark_AUPRC_fig_{mode}.png",
+    shell:
+        """
+        cp {input.csv} benchmarking/python_benchmark_metrics.csv
+        cd benchmarking && Rscript plot_benchmark.R && cd ..
+        mv benchmarking/benchmark_AUPRC_fig.png {output}
+        """

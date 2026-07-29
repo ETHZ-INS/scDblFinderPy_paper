@@ -1,3 +1,5 @@
 benchmarking/datasets/*.rds
 benchmarking/datasets/*.h5ad
 __pycache__
+.snakemake
+monitoring/benchmarks/
