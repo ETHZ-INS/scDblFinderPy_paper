@@ -62,7 +62,8 @@ def main():
             all_results.append(res_rand)
             
     df = pd.DataFrame(all_results)
-    out_path = os.path.join(os.path.dirname(__file__), "python_benchmark_metrics.csv")
+    suffix = "GPU" if use_gpu else "CPU"
+    out_path = os.path.join(os.path.dirname(__file__), f"python_benchmark_metrics_{suffix}.csv")
     df.to_csv(out_path, index=False)
     print(f"Saved python benchmark scores across all datasets to {out_path}")
 

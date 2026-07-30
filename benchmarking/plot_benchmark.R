@@ -2,11 +2,18 @@ library(ggplot2)
 library(viridisLite)
 library(reshape2)
 
-cat("Loading paper benchmark results...\n")
-e <- readRDS("benchmark.results.rds")
+args <- commandArgs(trailingOnly=TRUE)
+use_gpu <- "--gpu" %in% args
+mode <- if (use_gpu) "GPU" else "CPU"
 
-cat("Loading Python package performance...\n")
-py_res <- read.csv("python_benchmark_metrics.csv")
+cat("Loading R-package benchmark results...\n")
+e <- readRDS("benchmark.results_R.rds")
+
+cat(sprintf("Loading Python package performance (%s)...\n", mode))
+py_res <- read.csv(sprintf("python_benchmark_metrics_%s.csv", mode))
+scrublet_res <- read.csv("scrublet_benchmark_metrics.csv")
+vaeda_res <- read.csv("vaeda_benchmark_metrics.csv")
+py_res <- rbind(py_res, scrublet_res, vaeda_res)
 # Rename columns if needed to match e
 # e has: dataset, method, AUPRC, AUROC, elapsed
 
@@ -68,5 +75,5 @@ p1 <- ggplot(e, aes(dataset, method)) +
                                  colour=ifelse(levels(e$method) %in% scdbl.methods,"black","grey30")),
         axis.title.y=element_blank(), panel.grid=element_blank())
 
-ggsave("benchmark_AUPRC_fig.png", p1, width=10.5, height=6.8, dpi=300)
+ggsave(sprintf("benchmark_AUPRC_fig_%s.png", mode), p1, width=10.5, height=6.8, dpi=300)
 cat("Plot generated successfully!\n")

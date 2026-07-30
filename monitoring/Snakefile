@@ -37,6 +37,9 @@ rule all:
         "monitoring/benchmarks/run_benchmark_CPU.tsv",
         "monitoring/benchmarks/run_benchmark_GPU.tsv",
         "monitoring/benchmarks/gpu_usage_GPU.csv",
+        "monitoring/benchmarks/run_scrublet_benchmark.tsv",
+        "monitoring/benchmarks/run_vaeda_benchmark.tsv",
+        "monitoring/benchmarks/run_r_benchmark.tsv",
 
 
 # Converts the raw .rds datasets to the .h5ad format run_python_benchmark.py
@@ -62,7 +65,7 @@ rule run_benchmark_cpu:
         # Snakemake auto-fills this with wall time, max RSS, mean CPU load, etc.
         "monitoring/benchmarks/run_benchmark_CPU.tsv"
     shell:
-        "python {input.script} && mv benchmarking/python_benchmark_metrics.csv {output.csv}"
+        "python {input.script}"
 
 
 rule run_benchmark_gpu:
@@ -82,20 +85,77 @@ rule run_benchmark_gpu:
         monitor_pid=$!
         trap 'kill $monitor_pid 2>/dev/null' EXIT
         python {input.script} --gpu
-        mv benchmarking/python_benchmark_metrics.csv {output.csv}
         """
+
+# Scrublet moved to run_scrublet_benchmark.py since it's 
+# a Python package
+rule run_scrublet_benchmark:
+    input:
+        script="benchmarking/run_scrublet_benchmark.py",
+        datasets=H5AD_FILES,
+    output:
+        csv="benchmarking/scrublet_benchmark_metrics.csv",
+    benchmark:
+        "monitoring/benchmarks/run_scrublet_benchmark.tsv"
+    shell:
+        "python {input.script}"
+
+
+# vaeda pins very old deps (Python 3.8, TensorFlow 2.8) that conflict with
+# the main env used for run_python_benchmark.py/run_scrublet_benchmark.py,
+# so it lives in its own conda env (vaeda_env) invoked by absolute path -
+# `conda run -n vaeda_env` was unreliable on this host (silently fell back
+# to a different env's python).
+rule run_vaeda_benchmark:
+    input:
+        script="benchmarking/run_vaeda_benchmark.py",
+        datasets=H5AD_FILES,
+    output:
+        csv="benchmarking/vaeda_benchmark_metrics.csv",
+    benchmark:
+        "monitoring/benchmarks/run_vaeda_benchmark.tsv"
+    shell:
+        "/home/ahiropedi/.conda/envs/vaeda_env/bin/python {input.script}"
+
+
+# Recomputes DoubletFinder (default) with its current version; carries over
+# every other R-native method from benchmark.results_R.rds's own last run
+# rather than any static paper-era file (the R script reads its own output
+# if present - marked update() below so Snakemake doesn't delete it first -
+# and starts from an empty baseline otherwise). The very first invocation
+# should therefore use --all so nothing is missing afterwards. Pass
+# --config rerun_methods=... to also rerun any of scDblFinder.clusters,
+# scDblFinder.random, bcds, cxds, hybrid, computeDoubletDensity - either a
+# comma-separated subset or "all", e.g.:
+#   snakemake --cores 1 --config rerun_methods=all
+#   snakemake --cores 1 --config rerun_methods=bcds,cxds
+rule run_r_benchmark:
+    input:
+        script="benchmarking/run_r_benchmark.R",
+        datasets=RDS_FILES,
+    output:
+        rds=update("benchmarking/benchmark.results_R.rds"),
+    benchmark:
+        "monitoring/benchmarks/run_r_benchmark.tsv"
+    params:
+        methods_arg=lambda wc: (
+            "--all" if config.get("rerun_methods") == "all"
+            else config.get("rerun_methods", "")
+        ),
+    shell:
+        "cd benchmarking && Rscript run_r_benchmark.R {params.methods_arg}"
 
 
 rule plot:
     input:
         csv="benchmarking/python_benchmark_metrics_{mode}.csv",
-        rds="benchmarking/benchmark.results.rds",
+        scrublet_csv="benchmarking/scrublet_benchmark_metrics.csv",
+        vaeda_csv="benchmarking/vaeda_benchmark_metrics.csv",
+        rds="benchmarking/benchmark.results_R.rds",
         script="benchmarking/plot_benchmark.R",
     output:
         "benchmarking/benchmark_AUPRC_fig_{mode}.png",
+    params:
+        gpu_flag=lambda wc: "--gpu" if wc.mode == "GPU" else "",
     shell:
-        """
-        cp {input.csv} benchmarking/python_benchmark_metrics.csv
-        cd benchmarking && Rscript plot_benchmark.R && cd ..
-        mv benchmarking/benchmark_AUPRC_fig.png {output}
-        """
+        "cd benchmarking && Rscript plot_benchmark.R {params.gpu_flag}"
