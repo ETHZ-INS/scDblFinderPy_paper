@@ -26,6 +26,18 @@ from pathlib import Path
 # paths below to the repo root reliably.
 workdir: str(Path(workflow.basedir).parent)
 
+# update() is injected as a builtin by Snakemake >=8 (marks an output as
+# "don't delete before running, the rule reads its own prior output"). On
+# older Snakemake (e.g. the system /usr/bin/snakemake 6.x some machines
+# still have on PATH) it's never injected and referencing it below raises
+# NameError before the DAG is even built. Fall back to a no-op so the
+# Snakefile still parses - on old Snakemake the R output just loses the
+# carry-over behaviour described in run_r_benchmark below instead of
+# crashing outright.
+if "update" not in dir():
+    def update(path):
+        return path
+
 RDS_FILES = glob.glob("benchmarking/datasets/*.rds")
 H5AD_FILES = [f.replace(".rds", ".h5ad") for f in RDS_FILES]
 
