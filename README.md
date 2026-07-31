@@ -101,13 +101,14 @@ section below for more on this.
 
 ### 5. (Optional) Regenerate the comparison figure
 
-`benchmarking/plot_benchmark.R` merges all of the above (both CSVs from
-step 3/4 for whichever mode, plus `benchmark.results_R.rds`) to produce the
+`benchmarking/plot_benchmark.R` merges all of the above - both
+`python_benchmark_metrics_CPU.csv` and `_GPU.csv` from step 3/4 (labelled
+`scDblFinder.Py.clusters/.random (CPU)` and `(GPU)` respectively so they
+appear as separate rows), plus `benchmark.results_R.rds` - into a single
 AUPRC comparison figure:
 
 ```bash
-Rscript plot_benchmark.R          # uses python_benchmark_metrics_CPU.csv -> benchmark_AUPRC_fig_CPU.png
-Rscript plot_benchmark.R --gpu    # uses python_benchmark_metrics_GPU.csv -> benchmark_AUPRC_fig_GPU.png
+Rscript plot_benchmark.R    # produces benchmark_AUPRC_fig.png
 ```
 
 ## Automated pipeline (Snakemake)
@@ -115,8 +116,9 @@ Rscript plot_benchmark.R --gpu    # uses python_benchmark_metrics_GPU.csv -> ben
 `monitoring/Snakefile` automates steps 3-5 above for both a CPU and a GPU
 run (including rerunning Scrublet, Vaeda, and DoubletFinder with their
 current versions, rather than relying solely on the paper's original
-results), and tracks the resource usage (wall time, memory, CPU load, and
-— for the GPU run — `nvidia-smi` utilization/memory) of each run.
+results), tracks the resource usage (wall time, memory, CPU load, and —
+for the GPU run — `nvidia-smi` utilization/memory) of each run, and plots
+both alongside every other method in a single comparison figure.
 
 Steps 1-2 above (installing `scDblFinderPy` and fetching/converting the
 datasets) are still prerequisites; Snakemake orchestrates the rest.
@@ -202,7 +204,7 @@ Useful variations:
 
 ```bash
 snakemake -n                                             # dry run: show what would execute
-snakemake --cores 1 benchmarking/benchmark_AUPRC_fig_GPU.png  # build just one target
+snakemake --cores 1 benchmarking/benchmark_AUPRC_fig.png  # build just the figure
 ```
 
 The GPU rule requires the same conda/RAPIDS setup as `python
@@ -238,8 +240,9 @@ snakemake --cores 1 --config rerun_methods=bcds,cxds     # later: refresh just a
   already had for the methods that weren't rerun this time (see "Rerunning
   the other R-native methods" above — the very first run needs
   `rerun_methods=all`).
-- `benchmarking/benchmark_AUPRC_fig_CPU.png` / `_GPU.png` — the comparison
-  figure, combining all of the above via `plot_benchmark.R`.
+- `benchmarking/benchmark_AUPRC_fig.png` — the comparison figure, combining
+  all of the above via `plot_benchmark.R` (Python CPU and GPU results shown
+  as separate rows alongside every other method).
 - `monitoring/benchmarks/run_benchmark_CPU.tsv` / `_GPU.tsv` /
   `run_scrublet_benchmark.tsv` / `run_vaeda_benchmark.tsv` /
   `run_r_benchmark.tsv` — Snakemake's built-in per-run profile (wall time,

@@ -2,18 +2,21 @@ library(ggplot2)
 library(viridisLite)
 library(reshape2)
 
-args <- commandArgs(trailingOnly=TRUE)
-use_gpu <- "--gpu" %in% args
-mode <- if (use_gpu) "GPU" else "CPU"
-
 cat("Loading R-package benchmark results...\n")
 e <- readRDS("benchmark.results_R.rds")
 
-cat(sprintf("Loading Python package performance (%s)...\n", mode))
-py_res <- read.csv(sprintf("python_benchmark_metrics_%s.csv", mode))
+cat("Loading Python package performance (CPU + GPU)...\n")
+# Both CSVs use the same method names (scDblFinder.Py.clusters/.random), so
+# tag each with its device before combining - otherwise the CPU and GPU rows
+# for the same method would collide into a single row in the plot below.
+py_cpu_res <- read.csv("python_benchmark_metrics_CPU.csv")
+py_cpu_res$method <- paste0(py_cpu_res$method, " (CPU)")
+py_gpu_res <- read.csv("python_benchmark_metrics_GPU.csv")
+py_gpu_res$method <- paste0(py_gpu_res$method, " (GPU)")
+
 scrublet_res <- read.csv("scrublet_benchmark_metrics.csv")
 vaeda_res <- read.csv("vaeda_benchmark_metrics.csv")
-py_res <- rbind(py_res, scrublet_res, vaeda_res)
+py_res <- rbind(py_cpu_res, py_gpu_res, scrublet_res, vaeda_res)
 # Rename columns if needed to match e
 # e has: dataset, method, AUPRC, AUROC, elapsed
 
@@ -32,7 +35,8 @@ metmax <- sort(apply(reshape2::dcast(e, dataset~method, value.var="AUPRC")[,-1],
 
 # Customize ordering to put R/Python clustered then R/Python random at the top of the plot
 met_levels <- names(metmax)
-target_methods <- c("scDblFinder.Py.random", "scDblFinder.random", "scDblFinder.Py.clusters", "scDblFinder.clusters")
+target_methods <- c("scDblFinder.Py.random (CPU)", "scDblFinder.Py.random (GPU)", "scDblFinder.random",
+                     "scDblFinder.Py.clusters (CPU)", "scDblFinder.Py.clusters (GPU)", "scDblFinder.clusters")
 met_levels <- setdiff(met_levels, target_methods)
 met_levels <- c(met_levels, target_methods)
 
@@ -61,7 +65,10 @@ e$text.colour[e$AUPRC.rank==1] <- NA
 e$text <- gsub("1\\.00","1.0",gsub("0\\.",".",sprintf("%.2f",e$AUPRC)))
 
 # The top methods to bold
-scdbl.methods <- c("scDblFinder.clusters","scDblFinder.random", "scDblFinder.Py.clusters", "scDblFinder.Py.random", "directDblClassification","computeDoubletDensity")
+scdbl.methods <- c("scDblFinder.clusters","scDblFinder.random",
+                    "scDblFinder.Py.clusters (CPU)", "scDblFinder.Py.clusters (GPU)",
+                    "scDblFinder.Py.random (CPU)", "scDblFinder.Py.random (GPU)",
+                    "directDblClassification","computeDoubletDensity")
 
 p1 <- ggplot(e, aes(dataset, method)) + 
   geom_point(aes(size=AUPRC, colour=AUPRC.rank)) + 
@@ -75,5 +82,5 @@ p1 <- ggplot(e, aes(dataset, method)) +
                                  colour=ifelse(levels(e$method) %in% scdbl.methods,"black","grey30")),
         axis.title.y=element_blank(), panel.grid=element_blank())
 
-ggsave(sprintf("benchmark_AUPRC_fig_%s.png", mode), p1, width=10.5, height=6.8, dpi=300)
+ggsave("benchmark_AUPRC_fig.png", p1, width=10.5, height=6.8, dpi=300)
 cat("Plot generated successfully!\n")

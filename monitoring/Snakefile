@@ -1,7 +1,7 @@
 """
-Pipeline for reproducing the scDblFinderPy paper's Python benchmark and
-comparison figure, split by CPU vs. GPU run, with resource usage tracked
-for each.
+Pipeline for reproducing the scDblFinderPy paper's Python benchmark, run
+once on CPU and once on GPU with resource usage tracked for each, and a
+single comparison figure that plots both alongside every other method.
 
 Lives in monitoring/ alongside gpu_monitor.py, but all rule paths are
 written relative to the repo root (scDblFinderPy_paper/), which the
@@ -12,7 +12,7 @@ Run everything (from either this directory or the repo root):
     snakemake --cores 1                           # from monitoring/
 
 Run just one target (Snakemake figures out which upstream rules it needs):
-    snakemake --cores 1 benchmarking/benchmark_AUPRC_fig_GPU.png
+    snakemake --cores 1 benchmarking/benchmark_AUPRC_fig.png
 
 See a dry run (what would execute, without executing it):
     snakemake -n
@@ -32,8 +32,7 @@ H5AD_FILES = [f.replace(".rds", ".h5ad") for f in RDS_FILES]
 
 rule all:
     input:
-        "benchmarking/benchmark_AUPRC_fig_CPU.png",
-        "benchmarking/benchmark_AUPRC_fig_GPU.png",
+        "benchmarking/benchmark_AUPRC_fig.png",
         "monitoring/benchmarks/run_benchmark_CPU.tsv",
         "monitoring/benchmarks/run_benchmark_GPU.tsv",
         "monitoring/benchmarks/gpu_usage_GPU.csv",
@@ -148,14 +147,13 @@ rule run_r_benchmark:
 
 rule plot:
     input:
-        csv="benchmarking/python_benchmark_metrics_{mode}.csv",
+        csv_cpu="benchmarking/python_benchmark_metrics_CPU.csv",
+        csv_gpu="benchmarking/python_benchmark_metrics_GPU.csv",
         scrublet_csv="benchmarking/scrublet_benchmark_metrics.csv",
         vaeda_csv="benchmarking/vaeda_benchmark_metrics.csv",
         rds="benchmarking/benchmark.results_R.rds",
         script="benchmarking/plot_benchmark.R",
     output:
-        "benchmarking/benchmark_AUPRC_fig_{mode}.png",
-    params:
-        gpu_flag=lambda wc: "--gpu" if wc.mode == "GPU" else "",
+        "benchmarking/benchmark_AUPRC_fig.png",
     shell:
-        "cd benchmarking && Rscript plot_benchmark.R {params.gpu_flag}"
+        "cd benchmarking && Rscript plot_benchmark.R"
