@@ -1,6 +1,6 @@
 # scDblFinderPy paper
 
-This is the code & data behind the scDblFinderPy paper, as well as the snakefile used to track the performance and resource usage of the scDblFinderPy package.
+This is the data as well as the code to reproduce the figures from the scDblFinderPy paper, including the snakefile used to track the performance and resource usage of the different packages.
 
 For the `scDblFinderPy` package itself, visit the package's [github page](https://github.com/ETHZ-INS/scDblFinderPy).
 
@@ -8,7 +8,7 @@ For the `scDblFinderPy` package itself, visit the package's [github page](https:
 
 `benchmarking/run_python_benchmark.py` runs `scDblFinderPy` (in both
 clustered and random mode) over each benchmark dataset and reports
-AUPRC/AUROC/runtime, matching the metrics used in the paper's comparison
+AUPRC/AUROC/runtime, matching the metrics used in the scDblFinder paper's comparison
 figure.
 
 ### 1. Install scDblFinderPy
@@ -115,7 +115,7 @@ Rscript plot_benchmark.R    # produces benchmark_AUPRC_fig.png
 
 `monitoring/Snakefile` automates steps 3-5 above for both a CPU and a GPU
 run (including rerunning Scrublet, Vaeda, and DoubletFinder with their
-current versions, rather than relying solely on the paper's original
+current versions, rather than relying solely on the scDblFinder paper's original
 results), tracks the resource usage (wall time, memory, CPU load, and —
 for the GPU run — `nvidia-smi` utilization/memory) of each run, and plots
 both alongside every other method in a single comparison figure.
