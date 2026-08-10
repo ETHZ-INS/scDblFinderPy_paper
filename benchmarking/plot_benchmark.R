@@ -1,6 +1,7 @@
 library(ggplot2)
 library(viridisLite)
 library(reshape2)
+library(patchwork)
 
 cat("Loading R-package benchmark results...\n")
 e <- readRDS("benchmark.results_R.rds")
@@ -76,11 +77,20 @@ p1 <- ggplot(e, aes(dataset, method)) +
   scale_colour_viridis_c(breaks=c(1, length(unique(e$method))), labels=c("worst","best"), guide=guide_colorbar(barheight=unit(1, "cm"))) + 
   geom_point(data=e[e$AUPRC.rank==length(unique(e$method)),], shape=21, colour="black", aes(size=AUPRC), stroke=1.1, show.legend=FALSE) + 
   geom_text(aes(label=text), size=3, colour=ifelse(e$AUPRC.rank>=5, "black", "white")) + 
-  labs(colour="AUPRC rank") +
+  labs(colour="AUPRC rank", x="Dataset") + theme_minimal() +
   theme(axis.text.x=element_text(angle=45, hjust=1),
         axis.text.y=element_text(hjust=0.5, size=10.5, face="bold", 
                                  colour=ifelse(levels(e$method) %in% scdbl.methods,"black","grey30")),
         axis.title.y=element_blank(), panel.grid=element_blank())
 
-ggsave("benchmark_AUPRC_fig.png", p1, width=10.5, height=6.8, dpi=300)
+p2 <- ggplot(e, aes(elapsed, method)) + geom_col(fill="darkblue") + theme_minimal() +
+  theme(axis.text.y=element_blank(), axis.ticks.x=element_line(), panel.grid.minor = element_blank(),
+        axis.text.x=element_text(angle=90, hjust=1, vjust=0.5)) + 
+  scale_x_reverse(breaks=scales::breaks_pretty(n=3)) +
+  labs(x="Total time (seconds)", y="Method")
+
+pp <- p2 + p1 + plot_layout(widths=c(1,5))
+
+ggsave("benchmark.pdf", pp, width=11, height=6, dpi=300)
+#ggsave("benchmark_AUPRC_fig.png", pp, width=12, height=6.5, dpi=300)
 cat("Plot generated successfully!\n")
