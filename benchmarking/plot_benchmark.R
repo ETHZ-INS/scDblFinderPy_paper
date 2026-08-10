@@ -32,14 +32,10 @@ e$elapsed <- as.numeric(e$elapsed)
 
 cat("Calculating metrics and ranks (as per paper script)...\n")
 datmax <- sort(apply(reshape2::dcast(e, method~dataset, value.var="AUPRC")[,-1], 2, na.rm=TRUE, FUN=max))
-metmax <- sort(apply(reshape2::dcast(e, dataset~method, value.var="AUPRC")[,-1], 2, na.rm=TRUE, FUN=median))
+metmax <- sort(apply(reshape2::dcast(e, dataset~method, value.var="AUPRC")[,-1], 2,
+                     FUN=function(x){ median(x, na.rm=TRUE)+mean(x, na.rm=TRUE) }))
 
-# Customize ordering to put R/Python clustered then R/Python random at the top of the plot
 met_levels <- names(metmax)
-target_methods <- c("scDblFinder.Py.random (CPU)", "scDblFinder.Py.random (GPU)", "scDblFinder.random",
-                     "scDblFinder.Py.clusters (CPU)", "scDblFinder.Py.clusters (GPU)", "scDblFinder.clusters")
-met_levels <- setdiff(met_levels, target_methods)
-met_levels <- c(met_levels, target_methods)
 
 e$dataset <- factor(e$dataset, levels=names(datmax))
 e$method <- factor(e$method, levels=met_levels)
@@ -66,10 +62,7 @@ e$text.colour[e$AUPRC.rank==1] <- NA
 e$text <- gsub("1\\.00","1.0",gsub("0\\.",".",sprintf("%.2f",e$AUPRC)))
 
 # The top methods to bold
-scdbl.methods <- c("scDblFinder.clusters","scDblFinder.random",
-                    "scDblFinder.Py.clusters (CPU)", "scDblFinder.Py.clusters (GPU)",
-                    "scDblFinder.Py.random (CPU)", "scDblFinder.Py.random (GPU)",
-                    "directDblClassification","computeDoubletDensity")
+scdbl.methods <- grep("scDblFinder.Py", levels(e$method), value=TRUE, fixed=TRUE)
 
 p1 <- ggplot(e, aes(dataset, method)) + 
   geom_point(aes(size=AUPRC, colour=AUPRC.rank)) + 
