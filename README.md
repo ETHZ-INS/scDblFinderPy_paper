@@ -76,19 +76,20 @@ every dataset/method pair to `benchmarking/python_benchmark_metrics_CPU.csv`
 ### 4. Rerun the other benchmarked methods
 
 `benchmarking/plot_benchmark.R` (next step) compares `scDblFinderPy`
-against Scrublet, Vaeda, and a set of R-native methods, so it needs their
-results on disk too. Each has its own script:
+against Scrublet, Vaeda, `pyscdblfinder`, and a set of R-native methods, so
+it needs their results on disk too. Each has its own script:
 
 ```bash
 python run_scrublet_benchmark.py       # -> scrublet_benchmark_metrics.csv
 /path/to/vaeda_env/bin/python run_vaeda_benchmark.py  # -> vaeda_benchmark_metrics.csv
+python run_py_scdblfinder_benchmark.py # -> py_scdblfinder_benchmark_metrics.csv
 Rscript run_r_benchmark.R --all        # -> benchmark.results_R.rds (all R-native methods)
 ```
 
 These need their own packages/environments (DoubletFinder, Seurat, scds,
-the R `scDblFinder` package, pROC/PRROC, and the `vaeda_env` conda env) —
-see "Additional prerequisites" under the Snakemake section below, which
-covers exactly the same scripts.
+the R `scDblFinder` package, pROC/PRROC, the `vaeda_env` conda env, and
+`pyscdblfinder`) — see "Additional prerequisites" under the Snakemake
+section below, which covers exactly the same scripts.
 
 `run_r_benchmark.R` writes `benchmark.results_R.rds` and reads it back on
 its next run to carry forward whatever it isn't asked to recompute, so
@@ -104,8 +105,9 @@ section below for more on this.
 `benchmarking/plot_benchmark.R` merges all of the above - both
 `python_benchmark_metrics_CPU.csv` and `_GPU.csv` from step 3/4 (labelled
 `scDblFinder.Py.clusters/.random (CPU)` and `(GPU)` respectively so they
-appear as separate rows), plus `benchmark.results_R.rds` - into a single
-AUPRC comparison figure:
+appear as separate rows), `scrublet_benchmark_metrics.csv`,
+`vaeda_benchmark_metrics.csv`, `py_scdblfinder_benchmark_metrics.csv`, plus
+`benchmark.results_R.rds` - into a single AUPRC comparison figure:
 
 ```bash
 Rscript plot_benchmark.R    # produces benchmark_AUPRC_fig.png
@@ -114,11 +116,12 @@ Rscript plot_benchmark.R    # produces benchmark_AUPRC_fig.png
 ## Automated pipeline (Snakemake)
 
 `monitoring/Snakefile` automates steps 3-5 above for both a CPU and a GPU
-run (including rerunning Scrublet, Vaeda, and DoubletFinder with their
-current versions, rather than relying solely on the scDblFinder paper's original
-results), tracks the resource usage (wall time, memory, CPU load, and —
-for the GPU run — `nvidia-smi` utilization/memory) of each run, and plots
-both alongside every other method in a single comparison figure.
+run (including rerunning Scrublet, Vaeda, `pyscdblfinder`, and
+DoubletFinder with their current versions, rather than relying solely on
+the scDblFinder paper's original results), tracks the resource usage
+(wall time, memory, CPU load, and — for the GPU run — `nvidia-smi`
+utilization/memory) of each run, and plots both alongside every other
+method in a single comparison figure.
 
 Steps 1-2 above (installing `scDblFinderPy` and fetching/converting the
 datasets) are still prerequisites; Snakemake orchestrates the rest.
@@ -166,6 +169,19 @@ rerun via `rerun_methods` (see below).
 - **Scrublet** needs no extra installation: `benchmarking/run_scrublet_benchmark.py`
   uses `scanpy`'s built-in `sc.pp.scrublet`, and `scanpy` is already a
   dependency of `scDblFinderPy` from step 1 above.
+- **pyscdblfinder** ([omicverse/py-scDblFinder](https://github.com/omicverse/py-scDblFinder),
+  a separate pure-Python/xgboost port of the R `scDblFinder` algorithm,
+  distinct from this repo's own `scDblFinderPy`) — install it into the
+  same virtual environment used for `run_python_benchmark.py`:
+  ```bash
+  pip install pyscdblfinder
+  ```
+  Its pinned dependencies (`numpy`, `scipy`, `pandas`, `anndata`,
+  `scikit-learn`, `xgboost`) are loose lower bounds, so this coexists with
+  `scDblFinderPy`'s own pins from step 1 without needing a separate env.
+  `benchmarking/run_py_scdblfinder_benchmark.py` uses its `ScDblFinder`
+  class in the default (non-cluster-aware) mode, matching the package's
+  own quick-start example.
 - **Vaeda** (a Python/TensorFlow tool despite the "R packages" framing of
   the rest of this benchmark). It pins very old, specific dependencies
   (Python 3.8, TensorFlow 2.8) that conflict with the environment used for
@@ -234,6 +250,8 @@ snakemake --cores 1 --config rerun_methods=bcds,cxds     # later: refresh just a
   `benchmarking/run_scrublet_benchmark.py`.
 - `benchmarking/vaeda_benchmark_metrics.csv` — Vaeda, rerun fresh via
   `benchmarking/run_vaeda_benchmark.py` in the `vaeda_env` conda env.
+- `benchmarking/py_scdblfinder_benchmark_metrics.csv` — `pyscdblfinder`,
+  rerun fresh via `benchmarking/run_py_scdblfinder_benchmark.py`.
 - `benchmarking/benchmark.results_R.rds` — DoubletFinder rerun fresh (plus
   any other methods requested via `rerun_methods`) via
   `benchmarking/run_r_benchmark.R`, merged with whatever this same file
@@ -245,8 +263,9 @@ snakemake --cores 1 --config rerun_methods=bcds,cxds     # later: refresh just a
   as separate rows alongside every other method).
 - `monitoring/benchmarks/run_benchmark_CPU.tsv` / `_GPU.tsv` /
   `run_scrublet_benchmark.tsv` / `run_vaeda_benchmark.tsv` /
-  `run_r_benchmark.tsv` — Snakemake's built-in per-run profile (wall time,
-  max RSS, mean CPU load, I/O) for each of the above reruns.
+  `run_py_scdblfinder_benchmark.tsv` / `run_r_benchmark.tsv` — Snakemake's
+  built-in per-run profile (wall time, max RSS, mean CPU load, I/O) for
+  each of the above reruns.
 - `monitoring/benchmarks/gpu_usage_GPU.csv` — GPU utilization % and memory
   used, sampled once a second for the duration of the GPU run.
 

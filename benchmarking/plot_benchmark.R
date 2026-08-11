@@ -17,7 +17,8 @@ py_gpu_res$method <- paste0(py_gpu_res$method, " (GPU)")
 
 scrublet_res <- read.csv("scrublet_benchmark_metrics.csv")
 vaeda_res <- read.csv("vaeda_benchmark_metrics.csv")
-py_res <- rbind(py_cpu_res, py_gpu_res, scrublet_res, vaeda_res)
+py_scdblfinder_res <- read.csv("py_scdblfinder_benchmark_metrics.csv")
+py_res <- rbind(py_cpu_res, py_gpu_res, scrublet_res, vaeda_res, py_scdblfinder_res)
 # Rename columns if needed to match e
 # e has: dataset, method, AUPRC, AUROC, elapsed
 

@@ -50,6 +50,7 @@ rule all:
         "monitoring/benchmarks/gpu_usage_GPU.csv",
         "monitoring/benchmarks/run_scrublet_benchmark.tsv",
         "monitoring/benchmarks/run_vaeda_benchmark.tsv",
+        "monitoring/benchmarks/run_py_scdblfinder_benchmark.tsv",
         "monitoring/benchmarks/run_r_benchmark.tsv",
 
 
@@ -112,6 +113,23 @@ rule run_scrublet_benchmark:
         "python {input.script}"
 
 
+# pyscdblfinder (https://github.com/omicverse/py-scDblFinder) is a
+# pure-Python port of the R scDblFinder algorithm, distinct from this
+# repo's own scDblFinderPy - its dependencies (numpy/scipy/pandas/anndata/
+# scikit-learn/xgboost) are loose lower bounds compatible with the main
+# env used for run_python_benchmark.py, so it needs no separate conda env.
+rule run_py_scdblfinder_benchmark:
+    input:
+        script="benchmarking/run_py_scdblfinder_benchmark.py",
+        datasets=H5AD_FILES,
+    output:
+        csv="benchmarking/py_scdblfinder_benchmark_metrics.csv",
+    benchmark:
+        "monitoring/benchmarks/run_py_scdblfinder_benchmark.tsv"
+    shell:
+        "python {input.script}"
+
+
 # vaeda pins very old deps (Python 3.8, TensorFlow 2.8) that conflict with
 # the main env used for run_python_benchmark.py/run_scrublet_benchmark.py,
 # so it lives in its own conda env (vaeda_env) invoked by absolute path -
@@ -163,6 +181,7 @@ rule plot:
         csv_gpu="benchmarking/python_benchmark_metrics_GPU.csv",
         scrublet_csv="benchmarking/scrublet_benchmark_metrics.csv",
         vaeda_csv="benchmarking/vaeda_benchmark_metrics.csv",
+        py_scdblfinder_csv="benchmarking/py_scdblfinder_benchmark_metrics.csv",
         rds="benchmarking/benchmark.results_R.rds",
         script="benchmarking/plot_benchmark.R",
     output:
