@@ -7,9 +7,13 @@ For the `scDblFinderPy` package itself, visit the package's [github page](https:
 ## Reproducing the Python benchmark
 
 `benchmarking/run_python_benchmark.py` runs `scDblFinderPy` (in both
-clustered and random mode) over each benchmark dataset and reports
-AUPRC/AUROC/runtime, matching the metrics used in the scDblFinder paper's comparison
-figure.
+clustered and random mode) over each benchmark dataset, on 3 seeds by
+default (`42, 0, 1` — pass `--seeds 1,2,3` to change them), and reports
+AUPRC/AUROC/runtime per seed, matching the metrics used in the scDblFinder
+paper's comparison figure. It also writes every cell's individual doublet
+score to a separate CSV, which is what lets you later check whether
+averaging the score across seeds (cell by cell) beats just averaging the
+AUPRC of the 3 individual runs — see step 6 below.
 
 ### 1. Install scDblFinderPy
 
@@ -67,23 +71,32 @@ from step 1):
 python run_python_benchmark.py --gpu
 ```
 
-For each `.h5ad` file in `benchmarking/datasets`, this evaluates both
-clustered mode (`scDblFinder.Py.clusters`) and random mode
+Pass `--seeds` to change which seeds are run (default `42,0,1`):
+
+```bash
+python run_python_benchmark.py --seeds 1,2,3
+```
+
+For each `.h5ad` file in `benchmarking/datasets` and each seed, this
+evaluates both clustered mode (`scDblFinder.Py.clusters`) and random mode
 (`scDblFinder.Py.random`), and writes the resulting AUPRC/AUROC/runtime for
-every dataset/method pair to `benchmarking/python_benchmark_metrics_CPU.csv`
-(or `_GPU.csv` with `--gpu`).
+every dataset/method/seed row to
+`benchmarking/python_benchmark_metrics_CPU.csv` (or `_GPU.csv` with
+`--gpu`), plus every individual cell's doublet score to
+`benchmarking/python_percell_scores_CPU.csv` (or `_GPU.csv`).
 
 ### 4. Rerun the other benchmarked methods
 
 `benchmarking/plot_benchmark.R` (next step) compares `scDblFinderPy`
 against Scrublet, Vaeda, `pyscdblfinder`, and a set of R-native methods, so
-it needs their results on disk too. Each has its own script:
+it needs their results on disk too. Each has its own script, and each also
+runs 3 seeds by default (`--seeds` to override, same as step 3):
 
 ```bash
-python run_scrublet_benchmark.py       # -> scrublet_benchmark_metrics.csv
-/path/to/vaeda_env/bin/python run_vaeda_benchmark.py  # -> vaeda_benchmark_metrics.csv
-python run_py_scdblfinder_benchmark.py # -> py_scdblfinder_benchmark_metrics.csv
-Rscript run_r_benchmark.R --all        # -> benchmark.results_R.rds (all R-native methods)
+python run_scrublet_benchmark.py --seeds 42,0,1       # -> scrublet_benchmark_metrics.csv + scrublet_percell_scores.csv
+/path/to/vaeda_env/bin/python run_vaeda_benchmark.py --seeds 42,0,1  # -> vaeda_benchmark_metrics.csv + vaeda_percell_scores.csv
+python run_py_scdblfinder_benchmark.py --seeds 42,0,1 # -> py_scdblfinder_benchmark_metrics.csv + py_scdblfinder_percell_scores.csv
+Rscript run_r_benchmark.R --all --seeds 42,0,1         # -> benchmark.results_R.rds + benchmark.percell_scores_R.rds (all R-native methods)
 ```
 
 These need their own packages/environments (DoubletFinder, Seurat, scds,
@@ -91,8 +104,15 @@ the R `scDblFinder` package, pROC/PRROC, the `vaeda_env` conda env, and
 `pyscdblfinder`) — see "Additional prerequisites" under the Snakemake
 section below, which covers exactly the same scripts.
 
-`run_r_benchmark.R` writes `benchmark.results_R.rds` and reads it back on
-its next run to carry forward whatever it isn't asked to recompute, so
+Every method here — including ones like DoubletFinder, bcds, and
+`computeDoubletDensity` that don't expose an explicit seed argument — is
+seeded via `set.seed()` (and, for DoubletFinder's Seurat steps, the
+`seed.use`/`random.seed` arguments those functions default to fixed
+constants for) so its 3 runs actually differ.
+
+`run_r_benchmark.R` writes `benchmark.results_R.rds` (and
+`benchmark.percell_scores_R.rds` for per-cell scores) and reads both back
+on its next run to carry forward whatever it isn't asked to recompute, so
 **the very first time you run it, pass `--all`** so every method has a
 real value in there; after that, `Rscript run_r_benchmark.R` (no
 arguments) reruns just `DoubletFinder` and keeps the rest as they were,
@@ -100,28 +120,55 @@ or pass a comma-separated list (e.g. `bcds,cxds`) to refresh a different
 subset. See "Rerunning the other R-native methods" under the Snakemake
 section below for more on this.
 
-### 5. (Optional) Regenerate the comparison figure
+### 5. (Optional) Regenerate the comparison figures
 
 `benchmarking/plot_benchmark.R` merges all of the above - both
 `python_benchmark_metrics_CPU.csv` and `_GPU.csv` from step 3/4 (labelled
 `scDblFinder.Py.clusters/.random (CPU)` and `(GPU)` respectively so they
 appear as separate rows), `scrublet_benchmark_metrics.csv`,
 `vaeda_benchmark_metrics.csv`, `py_scdblfinder_benchmark_metrics.csv`, plus
-`benchmark.results_R.rds` - into a single AUPRC comparison figure:
+`benchmark.results_R.rds` - and produces two figures:
 
 ```bash
-Rscript plot_benchmark.R    # produces benchmark_AUPRC_fig.png
+Rscript plot_benchmark.R
 ```
+
+- `benchmark.pdf` — the main comparison figure, same layout as before, but
+  now every method's AUPRC/AUROC/elapsed is first **averaged across its 3
+  seeds** rather than plotting a single run.
+- `benchmark_implementation_comparison.pdf` — a separate figure directly
+  comparing the two independent Python reimplementations of scDblFinder
+  (this repo's `scDblFinderPy`, both CPU and GPU, vs. the unrelated
+  `pyscdblfinder` port, which only ever runs on CPU) seed by seed, as a
+  scatter against the y=x parity line, faceted by clustered/random mode.
+
+### 6. (Optional) Check whether averaging seeds actually helps
+
+`benchmarking/analyze_averaging_gain.R` uses the per-cell score CSVs from
+steps 3/4 to answer a different question: is the AUPRC computed from the
+**cell-wise mean score across the 3 seeds** actually better than just the
+**average of the 3 seeds' individual AUPRCs**? I.e., is there a real gain
+from running a method multiple times and averaging, per (dataset, method):
+
+```bash
+Rscript analyze_averaging_gain.R
+```
+
+Produces `averaging_gain_summary.csv` (one row per dataset/method with both
+numbers and their difference) and `benchmark_averaging_gain.pdf` (a
+scatter of the same two numbers against the parity line, with a paired
+Wilcoxon test printed to the console and in the plot subtitle).
 
 ## Automated pipeline (Snakemake)
 
-`monitoring/Snakefile` automates steps 3-5 above for both a CPU and a GPU
+`monitoring/Snakefile` automates steps 3-6 above for both a CPU and a GPU
 run (including rerunning Scrublet, Vaeda, `pyscdblfinder`, and
 DoubletFinder with their current versions, rather than relying solely on
-the scDblFinder paper's original results), tracks the resource usage
-(wall time, memory, CPU load, and — for the GPU run — `nvidia-smi`
-utilization/memory) of each run, and plots both alongside every other
-method in a single comparison figure.
+the scDblFinder paper's original results), on 3 seeds per method by
+default, tracks the resource usage (wall time, memory, CPU load, and — for
+the GPU run — `nvidia-smi` utilization/memory) of each run, and produces
+the main seed-averaged comparison figure, the scDblFinderPy-vs-pyscdblfinder
+implementation-comparison figure, and the seed-averaging-gain analysis.
 
 Steps 1-2 above (installing `scDblFinderPy` and fetching/converting the
 datasets) are still prerequisites; Snakemake orchestrates the rest.
@@ -219,8 +266,9 @@ snakemake --cores 1
 Useful variations:
 
 ```bash
-snakemake -n                                             # dry run: show what would execute
-snakemake --cores 1 benchmarking/benchmark_AUPRC_fig.png  # build just the figure
+snakemake -n                                    # dry run: show what would execute
+snakemake --cores 1 benchmarking/benchmark.pdf   # build just the main figure
+snakemake --cores 1 --config seeds=1,2,3         # use different seeds (default: 42,0,1)
 ```
 
 The GPU rule requires the same conda/RAPIDS setup as `python
@@ -245,22 +293,40 @@ snakemake --cores 1 --config rerun_methods=bcds,cxds     # later: refresh just a
 ### What it produces
 
 - `benchmarking/python_benchmark_metrics_CPU.csv` / `_GPU.csv` — scDblFinderPy
-  (clustered + random mode) results, same as the manual steps.
-- `benchmarking/scrublet_benchmark_metrics.csv` — Scrublet, rerun fresh via
+  (clustered + random mode) results across the 3 seeds, same as the manual
+  steps.
+- `benchmarking/python_percell_scores_CPU.csv` / `_GPU.csv` — every cell's
+  individual doublet score for each of the 3 seeds.
+- `benchmarking/scrublet_benchmark_metrics.csv` /
+  `scrublet_percell_scores.csv` — Scrublet, rerun fresh via
   `benchmarking/run_scrublet_benchmark.py`.
-- `benchmarking/vaeda_benchmark_metrics.csv` — Vaeda, rerun fresh via
-  `benchmarking/run_vaeda_benchmark.py` in the `vaeda_env` conda env.
-- `benchmarking/py_scdblfinder_benchmark_metrics.csv` — `pyscdblfinder`,
-  rerun fresh via `benchmarking/run_py_scdblfinder_benchmark.py`.
-- `benchmarking/benchmark.results_R.rds` — DoubletFinder rerun fresh (plus
-  any other methods requested via `rerun_methods`) via
+- `benchmarking/vaeda_benchmark_metrics.csv` / `vaeda_percell_scores.csv` —
+  Vaeda, rerun fresh via `benchmarking/run_vaeda_benchmark.py` in the
+  `vaeda_env` conda env.
+- `benchmarking/py_scdblfinder_benchmark_metrics.csv` /
+  `py_scdblfinder_percell_scores.csv` — `pyscdblfinder`, rerun fresh via
+  `benchmarking/run_py_scdblfinder_benchmark.py`.
+- `benchmarking/benchmark.results_R.rds` /
+  `benchmarking/benchmark.percell_scores_R.rds` (+
+  `benchmark_percell_scores_R.csv` export) — DoubletFinder rerun fresh
+  (plus any other methods requested via `rerun_methods`) via
   `benchmarking/run_r_benchmark.R`, merged with whatever this same file
   already had for the methods that weren't rerun this time (see "Rerunning
   the other R-native methods" above — the very first run needs
   `rerun_methods=all`).
-- `benchmarking/benchmark_AUPRC_fig.png` — the comparison figure, combining
-  all of the above via `plot_benchmark.R` (Python CPU and GPU results shown
-  as separate rows alongside every other method).
+- `benchmarking/benchmark.pdf` — the main comparison figure, combining all
+  of the above via `plot_benchmark.R`, with every method's AUPRC/AUROC/
+  elapsed averaged across its 3 seeds first (Python CPU and GPU results
+  shown as separate rows alongside every other method).
+- `benchmarking/benchmark_implementation_comparison.pdf` — per-seed AUPRC
+  scatter directly comparing `scDblFinderPy` (CPU and GPU) against
+  `pyscdblfinder`, the other independent Python reimplementation of
+  scDblFinder.
+- `benchmarking/averaging_gain_summary.csv` and
+  `benchmarking/benchmark_averaging_gain.pdf` — per (dataset, method)
+  comparison of the AUPRC from cell-wise-averaging the score across the 3
+  seeds vs. the average of the 3 seeds' individual AUPRCs, via
+  `benchmarking/analyze_averaging_gain.R`.
 - `monitoring/benchmarks/run_benchmark_CPU.tsv` / `_GPU.tsv` /
   `run_scrublet_benchmark.tsv` / `run_vaeda_benchmark.tsv` /
   `run_py_scdblfinder_benchmark.tsv` / `run_r_benchmark.tsv` — Snakemake's

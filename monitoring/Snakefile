@@ -12,10 +12,13 @@ Run everything (from either this directory or the repo root):
     snakemake --cores 1                           # from monitoring/
 
 Run just one target (Snakemake figures out which upstream rules it needs):
-    snakemake --cores 1 benchmarking/benchmark_AUPRC_fig.png
+    snakemake --cores 1 benchmarking/benchmark.pdf
 
 See a dry run (what would execute, without executing it):
     snakemake -n
+
+Every stochastic method is run once per seed (default 42,0,1); override with:
+    snakemake --cores 1 --config seeds=42,0,1
 """
 
 import glob
@@ -41,10 +44,17 @@ if "update" not in dir():
 RDS_FILES = glob.glob("benchmarking/datasets/*.rds")
 H5AD_FILES = [f.replace(".rds", ".h5ad") for f in RDS_FILES]
 
+# Every stochastic method is run once per seed (Pierre-Luc: "I'd run
+# everything on 3 seeds"); override with --config seeds=42,0,1
+SEEDS = [int(s) for s in str(config.get("seeds", "42,0,1")).split(",")]
+SEEDS_ARG = ",".join(str(s) for s in SEEDS)
+
 
 rule all:
     input:
-        "benchmarking/benchmark_AUPRC_fig.png",
+        "benchmarking/benchmark.pdf",
+        "benchmarking/benchmark_implementation_comparison.pdf",
+        "benchmarking/benchmark_averaging_gain.pdf",
         "monitoring/benchmarks/run_benchmark_CPU.tsv",
         "monitoring/benchmarks/run_benchmark_GPU.tsv",
         "monitoring/benchmarks/gpu_usage_GPU.csv",
@@ -73,11 +83,12 @@ rule run_benchmark_cpu:
         datasets=H5AD_FILES,
     output:
         csv="benchmarking/python_benchmark_metrics_CPU.csv",
+        percell="benchmarking/python_percell_scores_CPU.csv",
     benchmark:
         # Snakemake auto-fills this with wall time, max RSS, mean CPU load, etc.
         "monitoring/benchmarks/run_benchmark_CPU.tsv"
     shell:
-        "python {input.script}"
+        "python {input.script} --seeds {SEEDS_ARG}"
 
 
 rule run_benchmark_gpu:
@@ -86,6 +97,7 @@ rule run_benchmark_gpu:
         datasets=H5AD_FILES,
     output:
         csv="benchmarking/python_benchmark_metrics_GPU.csv",
+        percell="benchmarking/python_percell_scores_GPU.csv",
         gpu_log="monitoring/benchmarks/gpu_usage_GPU.csv",
     benchmark:
         "monitoring/benchmarks/run_benchmark_GPU.tsv"
@@ -96,10 +108,10 @@ rule run_benchmark_gpu:
         python monitoring/gpu_monitor.py {output.gpu_log} {params.interval} &
         monitor_pid=$!
         trap 'kill $monitor_pid 2>/dev/null' EXIT
-        python {input.script} --gpu
+        python {input.script} --gpu --seeds {SEEDS_ARG}
         """
 
-# Scrublet moved to run_scrublet_benchmark.py since it's 
+# Scrublet moved to run_scrublet_benchmark.py since it's
 # a Python package
 rule run_scrublet_benchmark:
     input:
@@ -107,10 +119,11 @@ rule run_scrublet_benchmark:
         datasets=H5AD_FILES,
     output:
         csv="benchmarking/scrublet_benchmark_metrics.csv",
+        percell="benchmarking/scrublet_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_scrublet_benchmark.tsv"
     shell:
-        "python {input.script}"
+        "python {input.script} --seeds {SEEDS_ARG}"
 
 
 # pyscdblfinder (https://github.com/omicverse/py-scDblFinder) is a
@@ -124,10 +137,11 @@ rule run_py_scdblfinder_benchmark:
         datasets=H5AD_FILES,
     output:
         csv="benchmarking/py_scdblfinder_benchmark_metrics.csv",
+        percell="benchmarking/py_scdblfinder_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_py_scdblfinder_benchmark.tsv"
     shell:
-        "python {input.script}"
+        "python {input.script} --seeds {SEEDS_ARG}"
 
 
 # vaeda pins very old deps (Python 3.8, TensorFlow 2.8) that conflict with
@@ -141,10 +155,11 @@ rule run_vaeda_benchmark:
         datasets=H5AD_FILES,
     output:
         csv="benchmarking/vaeda_benchmark_metrics.csv",
+        percell="benchmarking/vaeda_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_vaeda_benchmark.tsv"
     shell:
-        "/home/ahiropedi/.conda/envs/vaeda_env/bin/python {input.script}"
+        "/home/ahiropedi/.conda/envs/vaeda_env/bin/python {input.script} --seeds {SEEDS_ARG}"
 
 
 # Recomputes DoubletFinder (default) with its current version; carries over
@@ -164,6 +179,8 @@ rule run_r_benchmark:
         datasets=RDS_FILES,
     output:
         rds=update("benchmarking/benchmark.results_R.rds"),
+        percell_rds=update("benchmarking/benchmark.percell_scores_R.rds"),
+        percell_csv="benchmarking/benchmark_percell_scores_R.csv",
     benchmark:
         "monitoring/benchmarks/run_r_benchmark.tsv"
     params:
@@ -172,7 +189,7 @@ rule run_r_benchmark:
             else config.get("rerun_methods", "")
         ),
     shell:
-        "cd benchmarking && Rscript run_r_benchmark.R {params.methods_arg}"
+        "cd benchmarking && Rscript run_r_benchmark.R {params.methods_arg} --seeds {SEEDS_ARG}"
 
 
 rule plot:
@@ -185,6 +202,27 @@ rule plot:
         rds="benchmarking/benchmark.results_R.rds",
         script="benchmarking/plot_benchmark.R",
     output:
-        "benchmarking/benchmark_AUPRC_fig.png",
+        main="benchmarking/benchmark.pdf",
+        impl_comparison="benchmarking/benchmark_implementation_comparison.pdf",
     shell:
         "cd benchmarking && Rscript plot_benchmark.R"
+
+
+# Addresses Pierre-Luc's second question: whether cell-wise averaging the
+# doublet score across the 3 seeds beats the average of the 3 seeds'
+# individual AUPRCs. Needs every method's per-cell scores, hence depends on
+# all the percell outputs above rather than just the summary metric CSVs.
+rule analyze_averaging_gain:
+    input:
+        r_percell="benchmarking/benchmark_percell_scores_R.csv",
+        py_cpu_percell="benchmarking/python_percell_scores_CPU.csv",
+        py_gpu_percell="benchmarking/python_percell_scores_GPU.csv",
+        scrublet_percell="benchmarking/scrublet_percell_scores.csv",
+        vaeda_percell="benchmarking/vaeda_percell_scores.csv",
+        py_scdblfinder_percell="benchmarking/py_scdblfinder_percell_scores.csv",
+        script="benchmarking/analyze_averaging_gain.R",
+    output:
+        csv="benchmarking/averaging_gain_summary.csv",
+        fig="benchmarking/benchmark_averaging_gain.pdf",
+    shell:
+        "cd benchmarking && Rscript analyze_averaging_gain.R"
