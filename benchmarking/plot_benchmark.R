@@ -77,6 +77,8 @@ e$text.colour <- ifelse(e$rounded>=0.5,"black","white")
 e$text.colour[e$AUPRC.rank==1] <- NA
 e$text <- gsub("1\\.00","1.0",gsub("0\\.",".",sprintf("%.2f",e$AUPRC)))
 
+scdbl.methods <- grep("scDblFinderPy", levels(e$method), value=TRUE, fixed=TRUE)
+
 p1 <- ggplot(e, aes(dataset, method)) +
   geom_point(aes(size=AUPRC, colour=AUPRC.rank)) +
   scale_size(range=c(4,10)) +
