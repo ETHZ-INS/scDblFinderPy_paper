@@ -65,13 +65,22 @@ out_csv <- "averaging_gain_summary.csv"
 write.csv(summary_df, out_csv, row.names=FALSE)
 cat("Saved per-(dataset, method) comparison to", out_csv, "\n")
 
+summary_df <- read.csv("averaging_gain_summary.csv")
+summary_df$method <- gsub("scDblFinder.Py","scDblFinderPy", summary_df$method, fixed=TRUE)
+summary_df$method <- gsub("pyscDblFinder","pyscDblFinder.random", summary_df$method, fixed=TRUE)
+
 test <- wilcox.test(summary_df$AUPRC_of_avg_score, summary_df$avg_of_seed_AUPRCs, paired=TRUE)
 cat(sprintf(
   "\nAcross %d (dataset, method) combinations: mean gain from cell-wise score averaging = %.4f AUPRC (paired Wilcoxon p = %.4g)\n",
   nrow(summary_df), mean(summary_df$gain), test$p.value
 ))
 
-p <- ggplot(summary_df, aes(avg_of_seed_AUPRCs, AUPRC_of_avg_score)) +
+p1 <- ggplot(summary_df, aes(gain, reorder(method,gain))) + 
+  geom_vline(xintercept=0, linetype="dashed") + geom_boxplot() + theme_bw() +
+  labs(y=NULL, x="AUPRC of averaged score - average AUPRC across seeds",
+       title="Gain in AUPRC from multiple runs")
+
+p2 <- ggplot(summary_df, aes(avg_of_seed_AUPRCs, AUPRC_of_avg_score)) +
   geom_abline(slope=1, intercept=0, linetype="dashed", colour="grey50") +
   geom_point(aes(colour=method), size=2, alpha=0.8) +
   coord_equal() +
@@ -83,5 +92,5 @@ p <- ggplot(summary_df, aes(avg_of_seed_AUPRCs, AUPRC_of_avg_score)) +
   theme_minimal() +
   theme(legend.position="right")
 
-ggsave("benchmark_averaging_gain.pdf", p, width=8, height=7, dpi=300)
+ggsave("benchmark_averaging_gain.pdf", p1, width=8, height=4, dpi=300)
 cat("Saved plot to benchmark_averaging_gain.pdf\n")

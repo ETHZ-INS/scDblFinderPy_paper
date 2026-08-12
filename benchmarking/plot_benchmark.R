@@ -47,7 +47,7 @@ e <- aggregate(cbind(AUPRC, AUROC, elapsed) ~ dataset + method, data=e, FUN=mean
 cat("Calculating metrics and ranks (as per paper script)...\n")
 datmax <- sort(apply(reshape2::dcast(e, method~dataset, value.var="AUPRC")[,-1], 2, na.rm=TRUE, FUN=max))
 metmax <- sort(apply(reshape2::dcast(e, dataset~method, value.var="AUPRC")[,-1], 2,
-                     FUN=function(x){ median(x, na.rm=TRUE)+mean(x, na.rm=TRUE) }))
+                     FUN=function(x){ mean(x, na.rm=TRUE) }))
 
 met_levels <- names(metmax)
 
@@ -56,6 +56,8 @@ e$method <- factor(e$method, levels=met_levels)
 levels(e$method) <- gsub("bcds","scds::bcds",levels(e$method))
 levels(e$method) <- gsub("cxds","scds::cxds",levels(e$method))
 levels(e$method) <- gsub("hybrid","scds::hybrid",levels(e$method))
+levels(e$method) <- gsub("\\.Py","Py",levels(e$method))
+levels(e$method) <- gsub("pyscDblFinder","pyscDblFinder.random", levels(e$method), fixed=TRUE)
 
 getranks <- function(x){
   y <- rank(x)
@@ -74,9 +76,6 @@ e$rounded <- round(e$AUPRC,2)
 e$text.colour <- ifelse(e$rounded>=0.5,"black","white")
 e$text.colour[e$AUPRC.rank==1] <- NA
 e$text <- gsub("1\\.00","1.0",gsub("0\\.",".",sprintf("%.2f",e$AUPRC)))
-
-# The top methods to bold
-scdbl.methods <- grep("scDblFinder.Py", levels(e$method), value=TRUE, fixed=TRUE)
 
 p1 <- ggplot(e, aes(dataset, method)) +
   geom_point(aes(size=AUPRC, colour=AUPRC.rank)) +
