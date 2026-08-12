@@ -1,5 +1,6 @@
 benchmarking/datasets/*.rds
 benchmarking/datasets/*.h5ad
+benchmarking/benchmark_percell_scores_R.csv
 __pycache__
 .snakemake
 monitoring/benchmarks/

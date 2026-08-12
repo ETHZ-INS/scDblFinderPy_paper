@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import sys
 import os
+import gc
 import glob
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
@@ -25,6 +26,17 @@ def eval_mode(adata, mode_name, clusters_col, ds_name, seed, use_gpu=False):
     except Exception as e:
         print(f"    Failed on {mode_name} for {ds_name} (seed={seed}): {e}")
         return None, None
+    finally:
+        # cupy's memory pools cache every block they ever allocate and never
+        # release it back to the OS, so repeated GPU calls across the many
+        # dataset/mode/seed combinations in this loop steadily inflate the
+        # process's virtual memory until it hits the session's ulimit -v,
+        # after which every subsequent dataset fails identically.
+        if use_gpu:
+            gc.collect()
+            import cupy as cp
+            cp.get_default_memory_pool().free_all_blocks()
+            cp.get_default_pinned_memory_pool().free_all_blocks()
 
     elapsed = time.time() - st
 
