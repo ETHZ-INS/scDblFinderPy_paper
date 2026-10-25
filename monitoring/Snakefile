@@ -8,17 +8,29 @@ written relative to the repo root (scDblFinderPy_paper/), which the
 `workdir:` below pins to regardless of where you invoke `snakemake` from.
 
 Run everything (from either this directory or the repo root):
-    snakemake --cores 1 -s monitoring/Snakefile   # from repo root
-    snakemake --cores 1                           # from monitoring/
+    snakemake --cores 1 --use-conda -s monitoring/Snakefile   # from repo root
+    snakemake --cores 1 --use-conda                           # from monitoring/
+
+Every rule except the two scDblFinderPy ones runs in a pinned conda env
+defined under monitoring/envs/, which --use-conda builds automatically on
+first use. The scDblFinderPy rules (run_benchmark_cpu/gpu) instead use
+whichever environment is active when snakemake is invoked, since the GPU
+run needs a machine-specific RAPIDS install.
+
+The conda rules call $CONDA_PREFIX/bin/python and $CONDA_PREFIX/bin/Rscript
+explicitly rather than relying on PATH: conda activation swaps the env's
+bin/ in where the base env's entry sits on PATH rather than prepending it,
+so any interpreter placed ahead of that (e.g. another env's bin/ exported
+by an editor) would otherwise silently win.
 
 Run just one target (Snakemake figures out which upstream rules it needs):
-    snakemake --cores 1 benchmarking/benchmark.pdf
+    snakemake --cores 1 --use-conda benchmarking/benchmark.pdf
 
 See a dry run (what would execute, without executing it):
-    snakemake -n
+    snakemake -n --use-conda
 
 Every stochastic method is run once per seed (default 42,0,1); override with:
-    snakemake --cores 1 --config seeds=42,0,1
+    snakemake --cores 1 --use-conda --config seeds=42,0,1
 """
 
 import glob
@@ -40,6 +52,19 @@ workdir: str(Path(workflow.basedir).parent)
 if "update" not in dir():
     def update(path):
         return path
+
+# Without --use-conda, $CONDA_PREFIX in the rules below would point at
+# whatever env snakemake was launched from, so fail early instead.
+try:
+    from snakemake.settings.types import DeploymentMethod
+except ImportError:  # Snakemake <8
+    pass
+else:
+    if DeploymentMethod.CONDA not in workflow.deployment_settings.deployment_method:
+        raise WorkflowError(
+            "Run this workflow with --use-conda: every rule except the "
+            "scDblFinderPy ones runs in a pinned env from monitoring/envs/."
+        )
 
 RDS_FILES = glob.glob("benchmarking/datasets/*.rds")
 H5AD_FILES = [f.replace(".rds", ".h5ad") for f in RDS_FILES]
@@ -73,8 +98,10 @@ rule convert_datasets:
         script="benchmarking/datasets/convert_rds_to_h5ad.R",
     output:
         H5AD_FILES,
+    conda:
+        "envs/r_benchmark.yaml"
     shell:
-        "cd benchmarking/datasets && Rscript convert_rds_to_h5ad.R"
+        "cd benchmarking/datasets && $CONDA_PREFIX/bin/Rscript convert_rds_to_h5ad.R"
 
 
 rule run_benchmark_cpu:
@@ -122,15 +149,16 @@ rule run_scrublet_benchmark:
         percell="benchmarking/scrublet_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_scrublet_benchmark.tsv"
+    conda:
+        "envs/scrublet_pyscdbl.yaml"
     shell:
-        "python {input.script} --seeds {SEEDS_ARG}"
+        "$CONDA_PREFIX/bin/python {input.script} --seeds {SEEDS_ARG}"
 
 
 # pyscdblfinder (https://github.com/omicverse/py-scDblFinder) is a
 # pure-Python port of the R scDblFinder algorithm, distinct from this
-# repo's own scDblFinderPy - its dependencies (numpy/scipy/pandas/anndata/
-# scikit-learn/xgboost) are loose lower bounds compatible with the main
-# env used for run_python_benchmark.py, so it needs no separate conda env.
+# repo's own scDblFinderPy. Shares a pinned env with Scrublet, separate from
+# the scDblFinderPy env so that neither holds the other's versions back.
 rule run_py_scdblfinder_benchmark:
     input:
         script="benchmarking/run_py_scdblfinder_benchmark.py",
@@ -140,15 +168,14 @@ rule run_py_scdblfinder_benchmark:
         percell="benchmarking/py_scdblfinder_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_py_scdblfinder_benchmark.tsv"
+    conda:
+        "envs/scrublet_pyscdbl.yaml"
     shell:
-        "python {input.script} --seeds {SEEDS_ARG}"
+        "$CONDA_PREFIX/bin/python {input.script} --seeds {SEEDS_ARG}"
 
 
 # vaeda pins very old deps (Python 3.8, TensorFlow 2.8) that conflict with
-# the main env used for run_python_benchmark.py/run_scrublet_benchmark.py,
-# so it lives in its own conda env (vaeda_env) invoked by absolute path -
-# `conda run -n vaeda_env` was unreliable on this host (silently fell back
-# to a different env's python).
+# every other env here, so it gets its own.
 rule run_vaeda_benchmark:
     input:
         script="benchmarking/run_vaeda_benchmark.py",
@@ -158,8 +185,10 @@ rule run_vaeda_benchmark:
         percell="benchmarking/vaeda_percell_scores.csv",
     benchmark:
         "monitoring/benchmarks/run_vaeda_benchmark.tsv"
+    conda:
+        "envs/vaeda.yaml"
     shell:
-        "/home/ahiropedi/.conda/envs/vaeda_env/bin/python {input.script} --seeds {SEEDS_ARG}"
+        "$CONDA_PREFIX/bin/python {input.script} --seeds {SEEDS_ARG}"
 
 
 # Recomputes DoubletFinder (default) with its current version; carries over
@@ -188,8 +217,10 @@ rule run_r_benchmark:
             "--all" if config.get("rerun_methods") == "all"
             else config.get("rerun_methods", "")
         ),
+    conda:
+        "envs/r_benchmark.yaml"
     shell:
-        "cd benchmarking && Rscript run_r_benchmark.R {params.methods_arg} --seeds {SEEDS_ARG}"
+        "cd benchmarking && $CONDA_PREFIX/bin/Rscript run_r_benchmark.R {params.methods_arg} --seeds {SEEDS_ARG}"
 
 
 rule plot:
@@ -204,8 +235,10 @@ rule plot:
     output:
         main="benchmarking/benchmark.pdf",
         impl_comparison="benchmarking/benchmark_implementation_comparison.pdf",
+    conda:
+        "envs/r_benchmark.yaml"
     shell:
-        "cd benchmarking && Rscript plot_benchmark.R"
+        "cd benchmarking && $CONDA_PREFIX/bin/Rscript plot_benchmark.R"
 
 
 # Addresses Pierre-Luc's second question: whether cell-wise averaging the
@@ -224,5 +257,7 @@ rule analyze_averaging_gain:
     output:
         csv="benchmarking/averaging_gain_summary.csv",
         fig="benchmarking/benchmark_averaging_gain.pdf",
+    conda:
+        "envs/r_benchmark.yaml"
     shell:
-        "cd benchmarking && Rscript analyze_averaging_gain.R"
+        "cd benchmarking && $CONDA_PREFIX/bin/Rscript analyze_averaging_gain.R"

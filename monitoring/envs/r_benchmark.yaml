@@ -1,0 +1,45 @@
+# R 4.6 toolchain for every R step of the pipeline (run_r_benchmark.R,
+# plot_benchmark.R, analyze_averaging_gain.R, convert_rds_to_h5ad.R).
+#
+# conda only provides R itself plus the compilers/system libraries needed to
+# build packages: conda-forge/bioconda don't ship R 4.6 builds of the
+# Bioconductor stack yet. The R packages themselves are pinned exactly
+# (including scDblFinder and DoubletFinder at specific GitHub commits) in
+# r_benchmark.renv.lock and installed from source by r_benchmark.post-deploy.sh
+# when Snakemake creates this env (`snakemake --use-conda`).
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - r-base=4.6.1
+  # Must match the gcc r-base itself was built with: R 4.6's Makeconf
+  # passes -std=gnu23, which the older gcc the generic c-compiler
+  # metapackage may resolve to doesn't understand.
+  - gcc_linux-64=14.3.0
+  - gxx_linux-64=14.3.0
+  - gfortran_linux-64=14.3.0
+  - make
+  - cmake
+  - pkg-config
+  - bzip2
+  - xz
+  - zlib
+  - zstd
+  - libdeflate
+  - libcurl
+  - openssl
+  - libxml2
+  - glpk
+  - gmp
+  - fftw
+  - libpng
+  - libjpeg-turbo
+  - libtiff
+  - freetype
+  - fontconfig
+  - harfbuzz
+  - fribidi
+  - libwebp
+  - hdf5
+  - libuv
+  - git
