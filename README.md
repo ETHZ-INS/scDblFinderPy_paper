@@ -275,14 +275,17 @@ they are. To regenerate every result from scratch (without re-converting
 the datasets):
 
 ```bash
-snakemake --cores 1 --use-conda -s monitoring/Snakefile \
+snakemake --cores 1 --use-conda -s monitoring/Snakefile --rerun-incomplete \
   --forcerun run_benchmark_cpu run_benchmark_gpu run_scrublet_benchmark \
              run_py_scdblfinder_benchmark run_vaeda_benchmark run_r_benchmark \
   --config rerun_methods=all
 ```
 
 The figures and the averaging-gain analysis rerun automatically after.
-Add `--rerun-incomplete` if an earlier run was interrupted.
+`--rerun-incomplete` makes Snakemake regenerate (rather than refuse to
+start over) any outputs left behind by an earlier interrupted run; it's
+harmless otherwise. The whole run takes many hours, so start it inside
+`tmux`/`screen` (or with `nohup`) so it survives a dropped SSH session.
 
 #### Rerunning the other R-native methods
 
