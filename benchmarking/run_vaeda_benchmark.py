@@ -4,9 +4,15 @@ import os
 # (pthread_create failures against the current driver) unless GPUs are
 # hidden and its thread pools are capped; must be set before importing tf.
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
-os.environ.setdefault("OMP_NUM_THREADS", "2")
-os.environ.setdefault("TF_NUM_INTEROP_THREADS", "2")
-os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "2")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
+os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "1")
+
+# Even with single-threaded pools, TensorFlow runs ops on a worker thread
+# alongside the Python main thread, and the two overlap (~110% CPU), so pin
+# the process (and every thread it starts) to one core to match the other
+# methods' single-core benchmark.
+os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
 
 import scanpy as sc
 import pandas as pd

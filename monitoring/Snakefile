@@ -34,12 +34,22 @@ Every stochastic method is run once per seed (default 42,0,1); override with:
 """
 
 import glob
+import os
 from pathlib import Path
 
 # workflow.basedir is always this Snakefile's own directory (monitoring/),
 # no matter where `snakemake` is invoked from - so this pins all relative
 # paths below to the repo root reliably.
 workdir: str(Path(workflow.basedir).parent)
+
+# Every method is benchmarked on exactly one CPU core. Snakemake already sets
+# OMP/OpenBLAS/MKL/... thread counts to each rule's threads (1), but not the
+# pools below: numba (used by scanpy in scDblFinderPy and Scrublet) otherwise
+# spawns one thread per core, and TensorFlow (vaeda) its own intra/inter-op
+# pools. Set here, they reach every rule's shell without changing any rule's
+# code (so they don't by themselves trigger reruns).
+for var in ("NUMBA_NUM_THREADS", "TF_NUM_INTRAOP_THREADS", "TF_NUM_INTEROP_THREADS"):
+    os.environ[var] = "1"
 
 # update() is injected as a builtin by Snakemake >=8 (marks an output as
 # "don't delete before running, the rule reads its own prior output"). On

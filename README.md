@@ -274,6 +274,13 @@ snakemake --cores 1 --use-conda
 `--use-conda` is required: the Snakefile refuses to run without it, rather
 than silently running every method in whatever env happens to be active.
 
+Every method is benchmarked on a single CPU core, so runtimes are
+comparable. Snakemake caps the BLAS/OpenMP thread pools itself; the
+Snakefile additionally caps numba's (scanpy, used by scDblFinderPy and
+Scrublet) and TensorFlow's (vaeda), and `run_vaeda_benchmark.py` pins its
+process to one core. Each rule's `mean_load` column in
+`monitoring/benchmarks/*.tsv` should therefore be ≈100%.
+
 Useful variations:
 
 ```bash
