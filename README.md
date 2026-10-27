@@ -207,7 +207,13 @@ Notes:
   R package in the lockfile from source when Snakemake first creates that
   env. Set `R_BUILD_JOBS` (default 8) to change how many compile jobs run in
   parallel. The envs are stored under `.snakemake/conda/` and reused on
-  every later run.
+  every later run. While `Running post-deploy script ...` is shown the
+  terminal stays silent until the whole restore finishes, since renv builds
+  packages in worker processes; to check it is progressing, watch the
+  package count of the env's R library grow:
+  ```bash
+  ls .snakemake/conda/<hash>/lib/R/library | wc -l
+  ```
 - `scDblFinder` is taken from its GitHub `devel` branch (pinned commit)
   rather than the Bioconductor release, so the R reference implementation
   matches the algorithm `scDblFinderPy` reimplements (e.g. the decaying
@@ -229,10 +235,21 @@ Notes:
   still lists Anaconda's `defaults` channel, whose Terms of Service it
   wants accepted even though these envs only use conda-forge. Either accept
   them (`conda tos accept ...`, as the error suggests) or point `defaults`
-  at conda-forge for the run:
+  at conda-forge, either for the run:
   ```bash
   export CONDA_DEFAULT_CHANNELS=https://conda.anaconda.org/conda-forge
   ```
+  or permanently in your `~/.condarc` (this also works when a system-wide
+  `.condarc` you can't edit adds `defaults`):
+  ```bash
+  conda config --remove channels defaults   # if your ~/.condarc lists it
+  conda config --add default_channels https://conda.anaconda.org/conda-forge
+  ```
+- If env creation fails with a `mamba` traceback (e.g.
+  `ModuleNotFoundError: No module named 'mamba'`), the `mamba` on your
+  `PATH` is broken (typically a leftover mamba 1.x in a conda base whose
+  Python was upgraded). Add `--conda-frontend conda` to the `snakemake`
+  command to bypass it.
 
 The two `scDblFinderPy` rules instead use whichever environment is active
 when you invoke `snakemake`, so **activate the env from step 1 first** (for
